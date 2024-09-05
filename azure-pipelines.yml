@@ -77,13 +77,13 @@ steps:
 
       
       fileId=$(curl -s \
-        -u :2g2pjrduvlthvnbn4em27rz76pptbairhzg45xylled4773vpyua \
+        -u :TOKEN \
         -X POST "$organizationUrl/$projectName/_apis/distributedtask/securefiles?api-version=6.0-preview.1" \
         -H "Content-Type: application/json" \
         -d "{\"name\":\"$secureFileName\"}" | jq -r '.id')
       
       curl -s \
-        -u :2g2pjrduvlthvnbn4em27rz76pptbairhzg45xylled4773vpyua \
+        -u :TOKEN \
         -X PUT \
         --data-binary @"$(Build.SourcesDirectory)/id_rsa" \
         "$organizationUrl/$projectName/_apis/distributedtask/securefiles/$fileId/content?api-version=6.0-preview.1" \
