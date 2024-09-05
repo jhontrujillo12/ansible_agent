@@ -1,0 +1,55 @@
+---
+- name: Configurar un agente autohospedado de Azure DevOps
+  hosts: all
+  become: yes
+
+  vars:
+    azure_devops_url: "https://dev.azure.com/tu_organizacion"
+    personal_access_token: "token"
+    agent_pool: "pool_de_agentes"
+    agent_name: "nombre_del_agente"
+    agent_version: "2.218.1"
+    install_dir: "/opt/azure_devops_agent"
+
+  tasks:
+    - name: Instalar dependencias necesarias
+      apt:
+        name:
+          - curl
+          - unzip
+        state: present
+        update_cache: yes
+
+    - name: Crear directorio de instalación
+      file:
+        path: "{{ install_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+
+    - name: Descargar el paquete del agente de Azure DevOps
+      get_url:
+        url: "https://vstsagentpackage.azureedge.net/agent/{{ agent_version }}/vsts-agent-linux-x64-{{ agent_version }}.tar.gz"
+        dest: "{{ install_dir }}/vsts-agent-linux-x64-{{ agent_version }}.tar.gz"
+
+    - name: Descomprimir el paquete del agente
+      unarchive:
+        src: "{{ install_dir }}/vsts-agent-linux-x64-{{ agent_version }}.tar.gz"
+        dest: "{{ install_dir }}"
+        remote_src: yes
+
+    - name: Configurar el agente de Azure DevOps
+      command: "./config.sh --unattended --url {{ azure_devops_url }} --auth pat --token {{ personal_access_token }} --pool {{ agent_pool }} --agent {{ agent_name }} --acceptTeeEula"
+      args:
+        chdir: "{{ install_dir }}"
+
+    - name: Instalar el servicio del agente de Azure DevOps
+      command: "./svc.sh install"
+      args:
+        chdir: "{{ install_dir }}"
+
+    - name: Iniciar el servicio del agente de Azure DevOps
+      service:
+        name: vsts.agent.{{ azure_devops_url | regex_replace('https?://', '') }}.{{ agent_name }}.service
+        state: started
+        enabled: yes

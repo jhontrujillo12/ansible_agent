@@ -1,0 +1,76 @@
+---
+- name: Playbook para instalar Java, Android, Selenium, Appium y Maven
+  hosts: todos
+  become: yes
+
+  tasks:
+    - name: Actualizar el índice de paquetes
+      apt:
+        update_cache: yes
+
+    - name: Instalar Java
+      apt:
+        name: default-jdk
+        state: present
+
+    - name: Descargar y configurar Android SDK
+      apt:
+        name: unzip
+        state: present
+
+    - name: Crear directorio para el SDK de Android
+      file:
+        path: /opt/android-sdk
+        state: directory
+        mode: '0755'
+
+    - name: Descargar el SDK de Android
+      get_url:
+        url: https://dl.google.com/android/repository/commandlinetools-linux-8092744_latest.zip
+        dest: /tmp/cmdline-tools.zip
+
+    - name: Descomprimir el SDK de Android
+      unarchive:
+        src: /tmp/cmdline-tools.zip
+        dest: /opt/android-sdk/
+        remote_src: yes
+
+    - name: Mover herramientas de línea de comandos
+      command: mv /opt/android-sdk/cmdline-tools /opt/android-sdk/tools
+
+    - name: Agregar variables de entorno para Android SDK
+      lineinfile:
+        path: /etc/profile.d/android-sdk.sh
+        line: 'export ANDROID_HOME=/opt/android-sdk && export PATH=$PATH:$ANDROID_HOME/tools/bin:$ANDROID_HOME/platform-tools'
+        create: yes
+
+    - name: Recargar perfiles
+      shell: source /etc/profile.d/android-sdk.sh
+
+    - name: Instalar Selenium
+      pip:
+        name: selenium
+        state: present
+
+    - name: Instalar Appium
+      npm:
+        name: appium
+        global: yes
+        state: present
+
+    - name: Instalar Maven
+      apt:
+        name: maven
+        state: present
+
+    - name: Verificar la instalación de Java
+      command: java -version
+      ignore_errors: yes
+
+    - name: Verificar la instalación de Maven
+      command: mvn -version
+      ignore_errors: yes
+
+    - name: Verificar la instalación de Appium
+      command: appium -v
+      ignore_errors: yes

@@ -1,0 +1,124 @@
+# CI trigger
+trigger:
+  - main
+
+# pool agents
+pool:
+  vmImage: 'ubuntu latest'
+
+variables:
+   - group: sg_ansible_agent
+
+steps:
+
+# Usar version de python
+  - task: UsePythonVersion@0
+    displayName: 'Use python version'
+    inputs:
+      versionSpec: '3.11'
+
+# Instalar Ansible
+  - script: |
+      python -m pip install --upgrade pip
+      pip install ansible
+    displayName: 'Install Ansible on Build agent'
+  
+# Revisar la versión de Ansible
+  - script: |
+      ansible --version
+    displayName: 'Check Ansible version' 
+
+# Generar archivo SSH
+  - script: |
+      ssh-keygen -t rsa -b 4096 -f $(Build.SourcesDirectory)/id_rsa -q -N ""
+      ls -la
+    displayName: 'Generar SSH Key'
+
+# Publicar archivo SSH en carpeta
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: '$(Build.SourcesDirectory)/id_rsa.pub'
+      artifact: 'sshKey'
+      publishLocation: 'Pipeline'
+    displayName: 'Publicar llave SSH'
+
+# Crear carpeta .ssh
+  - task: Bash@3
+    inputs:
+      targetType: 'inline'
+      script: |
+        # Crear la carpeta .ssh si no existe
+        mkdir -p ~/.ssh
+    
+        # Crear un archivo temporal dentro de ~/.ssh
+        TEMP_FILE=$(mktemp ~/.ssh/ssh-copy-id.XXXXXXXXXX)
+  
+        # Continuar con otras operaciones, por ejemplo, añadir claves SSH
+        echo "Archivo temporal creado: $TEMP_FILE"
+    displayName: 'Crear carpeta'
+
+ # Copiar shh en host remoto 
+  - script: |
+      ssh-copy-id -i id_rsa.pub jhon@192.168.1.9
+      echo "$(Build.SourcesDirectory)/id_rsa"
+    displayName: 'Copiar ssh en host remoto'
+
+# Instalar jq para manipular el JSON en el script
+  - script: |
+      sudo apt-get install jq
+    displayName: 'Instalar jq'
+
+# Subir clave privada al Secure Files
+  - script: |
+      echo "Subiendo archivo SSH a Secure Files..."
+      organizationUrl="https://dev.azure.com/onoff-solution/"
+      projectName="DevSecOps"
+      secureFileName="id_rsa"
+
+      
+      fileId=$(curl -s \
+        -u :2g2pjrduvlthvnbn4em27rz76pptbairhzg45xylled4773vpyua \
+        -X POST "$organizationUrl/$projectName/_apis/distributedtask/securefiles?api-version=6.0-preview.1" \
+        -H "Content-Type: application/json" \
+        -d "{\"name\":\"$secureFileName\"}" | jq -r '.id')
+      
+      curl -s \
+        -u :2g2pjrduvlthvnbn4em27rz76pptbairhzg45xylled4773vpyua \
+        -X PUT \
+        --data-binary @"$(Build.SourcesDirectory)/id_rsa" \
+        "$organizationUrl/$projectName/_apis/distributedtask/securefiles/$fileId/content?api-version=6.0-preview.1" \
+        -H "Content-Type: application/octet-stream"
+    displayName: 'Subir SSH Key a Secure Files'
+    env:
+      ACCESSTOKEN: $(System.AccessToken)
+
+# Descargar ssh publicado
+  - task: DownloadSecureFile@1
+    name: sshKey
+    inputs:
+      secureFile: 'id_rsa'
+
+# Conectarse al servidor remoto por SSH
+  - script: |
+      mkdir -p ~/.ssh
+      echo "$(cat $(sshKey.secureFilePath))" > ~/.ssh/id_rsa
+      chmod 600 ~/.ssh/id_rsa
+      ssh-keyscan -H 192.168.1.9 >> ~/.ssh/known_hosts
+      ssh usuario@192.168.1.9 'echo Conexión SSH exitosa'
+    displayName: 'Conectarse al servidor remoto por SSH'
+
+# Realizar ping 
+  - script: |
+      ansible -i inventory all -m ping
+    displayName: "Ansible ping execute"
+
+  # Llamada al playbook de configuración del agente 
+  - script: |
+      ansible-playbook agent.yml
+    displayName: "Configurando agente"
+
+  # Llamada al playbook de instalación de herramientas
+  - script: |
+      ansible-playbook configpos.yml
+    displayName: "Instalando herramientas"
+  
